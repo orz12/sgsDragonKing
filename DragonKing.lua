@@ -1,11 +1,15 @@
 module("extensions.DragonKing", package.seeall)
 extension = sgs.Package("DragonKing")
 
-Nidhogg = sgs.General(extension, "Nidhogg", "god", 4)
+Nidhogg = sgs.General(extension, "Nidhogg", "god", 3)
 DKzengyi = sgs.CreateMaxCardsSkill{
 	name = "DKzengyi",
 	extra_func = function(self, target)
-		return target:getHp()
+		if target:hasSkill(self:objectName()) then
+			return target:getHp() - target:getMark("DKzhenfen_debuff")
+		else
+			return 1
+		end
 	end
 }
 
@@ -40,9 +44,17 @@ DKzhenfenCard = sgs.CreateSkillCard{
 	filter = function(self, targets, to_select, player)
 		return #targets < player:getMark("@doushengMark")
 	end,
-	on_effect = function(self, effect)
-		effect.from:loseMark("@doushengMark")
-		effect.to:drawCards(1,"DKzhenfen")
+	--on_effect = function(self, effect)
+	--	effect.from:loseMark("@doushengMark")
+	--	effect.to:drawCards(1,"DKzhenfen")
+	--end
+	on_use = function(self, room, source, targets)
+		source:loseMark("@doushengMark",#targets)
+		for _, p in ipairs(targets) do
+			p:drawCards(1,"DKzhenfen")
+		end
+		--source:gainMark("DKzhenfen_debuff",#targets)
+		source:addMark("DKzhenfen_debuff",#targets)
 	end
 }
 DKzhenfenVS = sgs.CreateZeroCardViewAsSkill{
@@ -55,15 +67,15 @@ DKzhenfenVS = sgs.CreateZeroCardViewAsSkill{
 DKzhenfen = sgs.CreateTriggerSkill{
 	name = "DKzhenfen",
 	frequency = sgs.Skill_NotFrequent,
-	events = {sgs.EventPhaseEnd},
+	events = {sgs.EventPhaseEnd, sgs.EventPhaseChanging},
 	view_as_skill = DKzhenfenVS,
-	can_trigger = function(self, player)
-		return player:isAlive() and player:hasSkill(self:objectName()) and player:getMark("@doushengMark") > 0
-			and player:getPhase() == sgs.Player_Draw
-	end,
 	on_trigger = function(self, event, player, data)
-		local room = player:getRoom()
-		room:askForUseCard(player, "@@DKzhenfen", "@DKzhenfen")
+		if event == sgs.EventPhaseEnd and player:getMark("@doushengMark") > 0 and player:getPhase() == sgs.Player_Draw then
+			local room = player:getRoom()
+			room:askForUseCard(player, "@@DKzhenfen", "@DKzhenfen")
+		elseif event == sgs.EventPhaseChanging and data:toPhaseChange().to == sgs.Player_NotActive then
+			player:loseAllMarks("DKzhenfen_debuff")
+		end
 		return false
 	end
 }
@@ -72,7 +84,7 @@ DKhaojieCard = sgs.CreateSkillCard{
 	target_fixed = false,
 	will_throw = true,
 	filter = function(self, targets, to_select, Self)
-		return true
+		return to_select:getHp() > 1
 	end,
 	on_use = function(self, room, source, targets)
 		source:loseMark("@doushengMark",10)
